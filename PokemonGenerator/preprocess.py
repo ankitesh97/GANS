@@ -29,7 +29,7 @@ class preprocess:
 
         all_images = []
         for im in images:
-            img = cv2.imread(im)
+            img = cv2.imread(im, cv2.COLOR_BGR2RGB)
             img = (img*1.0)/255
             all_images.append(img)
             cv2.waitKey(0)
