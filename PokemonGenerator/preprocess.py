@@ -30,10 +30,11 @@ class preprocess:
         all_images = []
         for im in images:
             img = cv2.imread(im, cv2.COLOR_BGR2RGB)
+            img = cv2.resize(img,(128,128))
             img = (img*1.0)/255
             all_images.append(img)
-            cv2.waitKey(0)
-            cv2.destroyAllWindows()
+            # cv2.waitKey(0)
+            # cv2.destroyAllWindows()
 
         self.X = np.array(all_images)
 

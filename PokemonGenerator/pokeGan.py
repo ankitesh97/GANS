@@ -3,27 +3,18 @@ import numpy as np
 import tensorflow as tf
 from preprocess import preprocess
 import os
+import sys
 
-HEIGHT, WIDTH, CHANNEL = 100, 100, 3
+HEIGHT, WIDTH, CHANNEL = 128, 128, 3
 BATCH_SIZE = 32
 EPOCHS = 100
 SAMPLE_SIZE = 8
 random_dim = 100
+learning_rate = 0.01
 
-
-def getBatches(X, m):
-    '''
-    this function returns a list of tensors (which contains batches)
-    '''
-    np.random.shuffle(X)
-    batches = []
-    for batch in range(0,m,BATCH_SIZE):
-        tf_batch = tf.convert_to_tensor(X[batch:batch+BATCH_SIZE], dtype=tf.float32)
-        batches.append(tf_batch)
-    return batches
 
 def generator(input_tensor, random_dim):
-    start_dim = 4 # starting dimension of the
+    start_dim = 8 # starting dimension of the
     CHANNEL = 3 # end channels
     #channel dimension list
     c4,c3,c2,c1 = 256,128,64,32
@@ -76,9 +67,7 @@ def discriminator(image,reuse=False):
         conv4 = tf.layers.conv2d(act3,filters=c4,kernel_size=[5,5],strides=[2,2],padding='SAME',kernel_initializer=tf.truncated_normal_initializer(stddev=0.02))
         batch_norm_4 = tf.contrib.layers.batch_norm(conv4)
         act4 = tf.nn.relu(batch_norm_4)
-
-        flattend = tf.reshape(act4,[-1,np.product(act4.get_shape[1:])])
-
+        flattend = tf.reshape(act4,[-1,np.product(act4.get_shape()[1:])])
         logits =  tf.layers.dense(flattend,units=1)
         activated = tf.nn.sigmoid(logits,name='discriminator')
 
@@ -91,6 +80,10 @@ def train():
     d_iters = 10
     gLosses = []
     dLosses = []
+
+    real_image = tf.placeholder(dtype=tf.float32,shape=[None,HEIGHT,WIDTH,CHANNEL],name='image_input')
+    random_inp = tf.placeholder(dtype=tf.float32,shape=[None,random_dim],name='random_inp')
+
     fake_image_generator = generator(random_inp, random_dim)
     real_result = discriminator(real_image)
     fake_result = discriminator(fake_image_generator,reuse=True)
@@ -100,61 +93,65 @@ def train():
     d_loss = tf.reduce_mean(fake_result) - tf.reduce_mean(real_result)
     g_loss = - tf.reduce_mean(fake_result)
 
-    d_weights = [var for var in tf.trainable_variables() if 'dis' var.name]
+    d_weights = [var for var in tf.trainable_variables() if 'disc' in var.name]
 
     trainer_d = tf.train.RMSPropOptimizer(learning_rate=learning_rate).minimize(d_loss)
     trainer_g = tf.train.RMSPropOptimizer(learning_rate=learning_rate).minimize(g_loss)
     d_clip = [v.assign(tf.clip_by_value(v, -0.01,0.01)) for v in d_weights]
 
-
+    init = tf.global_variables_initializer()
     saver = tf.train.Saver(max_to_keep=4)
     sess = tf.Session()
+    sess.run(init)
+    print "-----------------------------------Starting to train---------------------------------"
+    sys.stdout.flush()
 
     for epoch in range(EPOCHS):
-        batches = getBatches(X,m)
-        n_batches = len(batches)
-        for batch_num in range(n_batches):
-
+        np.random.shuffle(X)
+        for batch_num in range(0,m,BATCH_SIZE):
             ## discriminator loop
-            curr_batch = batches[batch_num]
+            curr_batch = X[batch_num:batch_num+BATCH_SIZE]
             for d_n in range(d_iters):
-                curr_sample = np.random.choice(curr_batch,SAMPLE_SIZE,replace=False)
+                choice = np.random.randint(0,curr_batch.shape[0],(SAMPLE_SIZE))
+                curr_sample = curr_batch[choice]
                 #random input
                 train_noise = np.random.uniform(-1.0, 1.0, size=[SAMPLE_SIZE, random_dim]).astype(np.float32)
                 sess.run(d_clip)
                 #train the desc
-                _, dLoss = sess.run([trainer_d, d_loss])
+                _, dLoss = sess.run([trainer_d, d_loss], feed_dict={real_image:curr_sample,random_inp:train_noise})
                 dLosses.append(dLoss)
 
             train_noise = np.random.uniform(-1.0, 1.0, size=[SAMPLE_SIZE, random_dim]).astype(np.float32)
-            _, gLoss = sess.run([trainer_g, g_loss])
+            _, gLoss = sess.run([trainer_g, g_loss],feed_dict={random_inp:train_noise})
 
             gLosses.append(gLoss)
 
         # save the model
-        if(epoch%10==0):
-            saver.save(sess,'PokeGanModel', global_step=epoch, write_meta_graph=False)
+        if epoch%2==0:
+            print "EPOCH: "+str(epoch)
+        if(epoch%2==0):
+            saver.save(sess,'models/PokeGanModelV1/model', global_step=epoch, write_meta_graph=False)
 
-        if(epoch%5==0):
-            #save some images
-            os.makedirs('genrated/'+str(epochs))
-            sample_noise = np.random.uniform(-1.0, 1.0, size=[batch_size, random_dim]).astype(np.float32)
-            gen_images = sess.run(fake_image)
-            save_images(gen_images, epochs)
-
-        with open("controlTraining.txt",'r') as f:
-            control = f.read()
-            if control.strip() == "1":
-               print "stopping the training process .........."
-               sys.stdout.flush()
-               break
+        # if(epoch%5==0):
+        #     #save some images
+        #     os.makedirs('genrated/'+str(epochs))
+        #     sample_noise = np.random.uniform(-1.0, 1.0, size=[batch_size, random_dim]).astype(np.float32)
+        #     gen_images = sess.run(fake_image)
+        #     save_images(gen_images, epochs)
+        #
+        # with open("controlTraining.txt",'r') as f:
+        #     control = f.read()
+        #     if control.strip() == "1":
+        #        print "stopping the training process .........."
+        #        sys.stdout.flush()
+        #        break
 
 
     saver.save(sess,'PokeGanModel', global_step=EPOCHS, write_meta_graph=False)
-    os.makedirs('genrated/'+str(EPOCHS))
-    sample_noise = np.random.uniform(-1.0, 1.0, size=[batch_size, random_dim]).astype(np.float32)
-    gen_images = sess.run(fake_image)
-    save_images(gen_images, epochs)
+    # os.makedirs('genrated/'+str(EPOCHS))
+    # sample_noise = np.random.uniform(-1.0, 1.0, size=[batch_size, random_dim]).astype(np.float32)
+    # gen_images = sess.run(fake_image)
+    # save_images(gen_images, epochs)
 
 def test():
     pass
