@@ -1,83 +1,69 @@
-
 import tensorflow as tf
 
-def a(resuse=False):
-    with tf.variable_scope('a') as scope:
-        if reuse:
-            scope.reuse_variables()
+width = 32
+height = 32
+batch_size = 10
+nb_epochs = 15
+code_length = 128
 
-        w_a = tf.get_variable('w_a',shape=[1], dtype=tf.float32, initializer=tf.constant_initializer(1.0))
-        b_a = tf.get_variable('b_a',shape=[1], dtype=tf.float32, initializer=tf.constant_initializer(2.0))
+graph = tf.Graph()
 
-        a_op = tf.multiply(w_a,b_a)
-        tf.assign(w_a,[20.0])
-        tf.assign(b_a,[21.0])
+from keras.datasets import cifar10
 
-        return a_op
+(X_train, Y_train), (X_test, Y_test) = cifar10.load_data()
+with graph.as_default():
+    # Global step
+    global_step = tf.Variable(0, trainable=False)
 
+    # Input batch
+    input_images = tf.placeholder(tf.float32, shape=(batch_size, height, width, 3))
 
+    # Convolutional layer 1
+    conv1 = tf.layers.conv2d(inputs=input_images,
+                             filters=32,
+                             kernel_size=(3, 3),
+                             kernel_initializer=tf.contrib.layers.xavier_initializer(),
+                             activation=tf.nn.tanh)
 
-def b(reuse=False):
-    with tf.variable_scope('b') as scope:
-        if reuse:
-            scope.reuse_variables()
+    # Convolutional output (flattened)
+    conv_output = tf.contrib.layers.flatten(conv1)
 
-        w_b = tf.get_variable('w_b',shape=[1], dtype=tf.float32, initializer=tf.constant_initializer(3.0))
-        b_b = tf.get_variable('b_b',shape=[1], dtype=tf.float32, initializer=tf.constant_initializer(4.0))
+    # Code layer
+    code_layer = tf.layers.dense(inputs=conv_output,
+                                 units=code_length,
+                                 activation=tf.nn.tanh)
 
-        b_op = tf.add(w_b,b_b, name='final')
-        r = tf.assign(w_b,[10.0])
-        j = tf.assign(b_b,[11.0])
+    # Code output layer
+    code_output = tf.layers.dense(inputs=code_layer,
+                                  units=(height - 2) * (width - 2) * 3,
+                                  activation=tf.nn.tanh)
 
-        return b_op,r,j
+    # Deconvolution input
+    deconv_input = tf.reshape(code_output, (batch_size, height - 2, width - 2, 3))
 
+    # Deconvolution layer 1
+    deconv1 = tf.layers.conv2d_transpose(inputs=deconv_input,
+                                         filters=4,
+                                         kernel_size=(5, 5),
+                                         strides=[2,2],
+                                         kernel_initializer=tf.contrib.layers.xavier_initializer(),
+                                         activation=tf.sigmoid)
 
+    print deconv1.shape
 
-def train():
-    b_ops, r, j = b()
-    saver = tf.train.Saver()
-    with tf.Session() as sess:
-        sess.run(tf.global_variables_initializer())
-        sess.run(tf.local_variables_initializer())
+    # Output batch
+    output_images = tf.cast(tf.reshape(deconv1,
+                                       (batch_size, height, width, 3)) * 255.0, tf.uint8)
 
-        print sess.run(b_ops)
-        print sess.run(r)
-        print sess.run(j)
-        print sess.run(b_ops)
-        saver.save(sess,'model')
+    # Reconstruction L2 loss
+    loss = tf.nn.l2_loss(input_images - deconv1)
 
+    # Training operations
+    learning_rate = tf.train.exponential_decay(learning_rate=0.0005,
+                                               global_step=global_step,
+                                               decay_steps=int(X_train.shape[0] / (2 * batch_size)),
+                                               decay_rate=0.95,
+                                               staircase=True)
 
-def test():
-
-    with tf.Session() as sess:
-
-        new_saver = tf.train.import_meta_graph('model.meta')
-        new_saver.restore(sess, tf.train.latest_checkpoint('.'))
-        # b_ops, _, _ = b(False)
-        # sess.run(tf.global_variables_initializer())
-
-        print sess.run('b/final:0')
-
-def check(reuse = False):
-
-    with tf.variable_scope('dis') as scope:
-        if reuse:
-            scope.reuse_variables()
-        w2 = tf.get_variable('w2', shape=[10, 1], dtype=tf.float32,
-            initializer=tf.truncated_normal_initializer(stddev=0.02))
-    return w2
-
-
-def main():
-    w_op  = check()
-    w_op2  = check(reuse=True)
-
-    with tf.Session() as sess:
-        sess.run(tf.global_variables_initializer())
-        sess.run(tf.local_variables_initializer())
-        print sess.run(w_op)
-        print sess.run(w_op2)
-
-# train()
-# test()
-main()
+    trainer = tf.train.RMSPropOptimizer(learning_rate)
+    training_step = trainer.minimize(loss)
