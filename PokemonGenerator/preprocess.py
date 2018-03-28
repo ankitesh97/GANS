@@ -5,8 +5,12 @@ import pickle
 import os
 import time
 
-DATA_FILE = 'data/In_series'
-SAVE_FILE = 'Datav0.0'
+import tensorflow as tf
+
+
+CHANNEL = 1
+DATA_FILE = 'data/trainingSample'
+SAVE_FILE = 'Datav1.4'
 
 class preprocess:
 
@@ -28,15 +32,25 @@ class preprocess:
             images.append(os.path.join(pokemon_dir,each))
 
         all_images = []
-        for im in images:
-            img = cv2.imread(im, cv2.COLOR_BGR2RGB)
-            img = cv2.resize(img,(128,128))
-            img = (img*1.0)/255
-            all_images.append(img)
-            # cv2.waitKey(0)
-            # cv2.destroyAllWindows()
+        decoded_files = []
+        sess = tf.Session()
 
-        self.X = np.array(all_images)
+        for im in images:
+            content = tf.read_file(im)
+            img = tf.image.decode_jpeg(content, channels = CHANNEL)
+            decoded_files.append(img)
+
+        counter = 0
+        for i in range(0,len(decoded_files),5000):
+
+            img = tf.to_float(tf.image.resize_images(decoded_files[i:i+5000], [32,32], method=tf.image.ResizeMethod.BICUBIC)) / 127.5 - 1
+            img =  sess.run(img)
+            counter += 1
+            if counter%5 == 0:
+                print i
+
+
+        self.X = np.array(img)
 
 
 
