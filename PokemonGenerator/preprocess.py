@@ -8,9 +8,9 @@ import time
 import tensorflow as tf
 
 
-CHANNEL = 1
-DATA_FILE = 'data/trainingSample'
-SAVE_FILE = 'Datav1.4'
+CHANNEL = 3
+DATA_FILE = 'data/pokemonResized'
+SAVE_FILE = 'Datav2.2'
 
 class preprocess:
 
@@ -43,14 +43,21 @@ class preprocess:
         counter = 0
         for i in range(0,len(decoded_files),5000):
 
-            img = tf.to_float(tf.image.resize_images(decoded_files[i:i+5000], [32,32], method=tf.image.ResizeMethod.BICUBIC)) / 127.5 - 1
+            img = tf.to_float(tf.image.resize_images(decoded_files[i:i+5000], [128,128], method=tf.image.ResizeMethod.BICUBIC)) / 127.5 - 1
             img =  sess.run(img)
+            img2 = []
+            for j in img:
+                j = cv2.cvtColor(j, cv2.COLOR_BGR2RGB)
+                # cv2.imshow("img",j)
+                # cv2.waitKey(0)
+                # cv2.destroyAllWindows()
+                img2.append(j)
             counter += 1
             if counter%5 == 0:
                 print i
 
 
-        self.X = np.array(img)
+        self.X = np.array(img2)
 
 
 
