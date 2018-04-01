@@ -9,7 +9,7 @@ import scipy
 
 HEIGHT, WIDTH, CHANNEL = 128,128,3
 BATCH_SIZE = 64
-EPOCHS = 5000
+EPOCHS = 10
 SAMPLE_SIZE = 16
 random_dim = 100
 learning_rate = 0.00005
@@ -25,31 +25,39 @@ def lrelu(x, leak=0.3, n="lrelu"):
 
 
 def to_range(images, min_value=0.0, max_value=1.0, dtype=None):
-    """
-    transform images from [-1.0, 1.0] to [min_value, max_value] of dtype
-    # """
-    # assert \
-    #     np.min(images) >= -1.0 - 1e-5 and np.max(images) <= 1.0 + 1e-5 \
-    #     and (images.dtype == np.float32 or images.dtype == np.float64), \
-    #     'The input images should be float64(32) and in the range of [-1.0, 1.0]!'
-    # if dtype is None:
-    #     dtype = images.dtype
-    # return ((images + 1.) / 2. * (max_value - min_value) + min_value).astype(dtype)
-    #
+
     return (images * 255.).astype(dtype=np.int16) % 256
 
-def imwrite(image, path):
-    """ save an [-1.0, 1.0] image """
+def to_range_scipy(image):
+    return (image+1.)/2.
 
-    if image.ndim == 3 and image.shape[2] == 1:  # for gray image
+def imwrite(image, path):
+
+    if image.ndim == 3 and image.shape[2] == 1:
         image = np.array(image, copy=True)
         image.shape = image.shape[0:2]
     cv2.imwrite(path,to_range(image,0,255))
+    imwrite_scipy(image,'scipy/'+path)
+
+def imwrite_scipy(image,path):
+    scipy.misc.imsave(path, to_range_scipy(image))
+
+def merge_images(images, size):
+    # images is of shape (?xhxwxc)
+    # size is (#rows,#cols for the merged image)
+    h,w,c = images.shape[1:]
+    merged = np.zeros((h*size[0], w*size[1],3))
+    for idx, image in enumerate(images):
+        i = idx%size[1]
+        j = idx//size[1]
+        merged[j*h:j*h+h, i*w:i*w+w,:] = image
+    return merged
+
 
 def generator(input, random_dim, is_train=True, reuse=False):
-    c4, c8, c16, c32, c64 = 128, 64, 32, 16,8  # channel num,256,128,64,32
+    c4, c8, c16, c32, c64 = 128, 64, 32, 16,8
     s4 = 4
-    output_dim = 3  # gray image
+    output_dim = 3
     with tf.variable_scope('gen') as scope:
         if reuse:
             scope.reuse_variables()
@@ -58,23 +66,23 @@ def generator(input, random_dim, is_train=True, reuse=False):
         b1 = tf.get_variable('b1', shape=[c4 * s4 * s4], dtype=tf.float32,
                              initializer=tf.constant_initializer(0.0))
         flat_conv1 = tf.add(tf.matmul(input, w1), b1, name='flat_conv1')
-        # 4*4*256
+
         conv1 = tf.reshape(flat_conv1, shape=[-1, s4, s4, c4], name='conv1')
         bn1 = tf.layers.batch_normalization(conv1, training=is_train, name='bn1')
         act1 = tf.nn.relu(bn1, name='act1')
-        # 8*8*64
+
         conv2 = tf.layers.conv2d_transpose(act1, c8, kernel_size=[5, 5], strides=[2, 2], padding="SAME",
                                            kernel_initializer=tf.truncated_normal_initializer(stddev=0.02),
                                            name='conv2')
         bn2 = tf.layers.batch_normalization(conv2, training=is_train, name='bn2')
         act2 = tf.nn.relu(bn2, name='act2')
-        # 16*16*128
+
         conv3 = tf.layers.conv2d_transpose(act2, c16, kernel_size=[5, 5], strides=[2, 2], padding="SAME",
                                            kernel_initializer=tf.truncated_normal_initializer(stddev=0.02),
                                            name='conv3')
         bn3 = tf.layers.batch_normalization(conv3, training=is_train, name='bn3')
         act3 = tf.nn.relu(bn3, name='act3')
-        # 32*32*256
+
         conv4 = tf.layers.conv2d_transpose(act3, c32, kernel_size=[5, 5], strides=[2, 2], padding="SAME",
                                            kernel_initializer=tf.truncated_normal_initializer(stddev=0.02),
                                            name='conv4')
@@ -86,7 +94,6 @@ def generator(input, random_dim, is_train=True, reuse=False):
                                                    name='conv5')
         bn5 = tf.layers.batch_normalization(conv5, training=is_train, name='bn5')
         act5 = tf.nn.relu(bn5, name='act5')
-        # 32*32*1
 
         conv6 = tf.layers.conv2d_transpose(act5, c64, kernel_size=[6, 6], strides=[2, 2], padding="SAME",
                                                    kernel_initializer=tf.truncated_normal_initializer(stddev=0.02),
@@ -103,23 +110,22 @@ def generator(input, random_dim, is_train=True, reuse=False):
 
 
 def discriminator(input, is_train=True, reuse=False):
-    c2, c4, c8, c16 = 16, 32, 64, 128  # channel num,32, 64, 128
+    c2, c4, c8, c16 = 16, 32, 64, 128
     with tf.variable_scope('disc') as scope:
         if reuse:
             scope.reuse_variables()
-        # 16*16*32
+
         conv1 = tf.layers.conv2d(input, c2, kernel_size=[4, 4], strides=[2, 2], padding="SAME",
                                  kernel_initializer=tf.truncated_normal_initializer(stddev=0.02),
                                  name='conv1')
         act1 = lrelu(conv1, n='act1')
 
-        # 8*8*64
         conv2 = tf.layers.conv2d(act1, c4, kernel_size=[4, 4], strides=[2, 2], padding="SAME",
                                  kernel_initializer=tf.truncated_normal_initializer(stddev=0.02),
                                  name='conv2')
         bn2 = tf.layers.batch_normalization(conv2, training=is_train, name='bn2')
         act2 = lrelu(bn2, n='act2')
-        # 4*4*128
+
         conv3 = tf.layers.conv2d(act2, c8, kernel_size=[4, 4], strides=[2, 2], padding="SAME",
                                  kernel_initializer=tf.truncated_normal_initializer(stddev=0.02),
                                  name='conv3')
@@ -142,12 +148,11 @@ def discriminator(input, is_train=True, reuse=False):
         shape = act5.get_shape().as_list()
         dim = shape[1] * shape[2] * shape[3]
         fc1 = tf.reshape(act5, shape=[-1, dim], name='fc1')
-        w1 = tf.get_variable('w1', shape=[fc1.shape[1], 1], dtype=tf.float32,
+        w1 = tf.get_variable('w1', shape=[fc1.shape[1], 16], dtype=tf.float32,
                              initializer=tf.truncated_normal_initializer(stddev=0.02))
-        b1 = tf.get_variable('b1', shape=[1], dtype=tf.float32,
+        b1 = tf.get_variable('b1', shape=[16], dtype=tf.float32,
                              initializer=tf.constant_initializer(0.0))
 
-        # wgan just get rid of the sigmoid
         output = tf.add(tf.matmul(fc1, w1), b1, name='output')
         return output
 
@@ -177,7 +182,7 @@ def train():
     sample_img = generator(random_inp,random_dim,is_train=True,reuse=True)
 
     # loss functions
-    d_loss = tf.reduce_mean(real_result)-tf.reduce_mean(fake_result)
+    d_loss = tf.reduce_mean(real_result-fake_result)
     g_loss =  tf.reduce_mean(fake_result)
 
     t_vars = tf.trainable_variables()
@@ -188,22 +193,25 @@ def train():
     trainer_g = tf.train.RMSPropOptimizer(learning_rate=learning_rate).minimize(g_loss, var_list=g_vars)
     d_clip = [v.assign(tf.clip_by_value(v, -0.01,0.01)) for v in d_vars]
 
-    # init = tf.global_variables_initializer()
+    tf.summary.scalar('Loss_Discriminator',d_loss)
+    tf.summary.scalar('Loss_Generator',g_loss)
+    init = tf.global_variables_initializer()
     saver = tf.train.Saver(max_to_keep=4)
     sess = tf.Session()
-    # sess.run(init)
-    saver.restore(sess,'./models/PokeGanModelV1/model-2000')
+    sess.run(init)
+    # saver.restore(sess,'./models/PokeGanModelV1/model-2000')
     writer = tf.summary.FileWriter('logs', graph=tf.get_default_graph())
+    write_op = tf.summary.merge_all()
     print "-----------------------------------Starting to train---------------------------------"
     sys.stdout.flush()
     pos = 0
     total_batch = 0
-    for epoch in range(2001,EPOCHS,1):
+    for epoch in range(EPOCHS):
 
         for batch in range(X.shape[0]/BATCH_SIZE):
             d_iters = 5
             if total_batch%500==0 or total_batch < 25:
-                d_iters = 25
+                d_iters = 5
             ## discriminator loop
             for d_n in range(d_iters):
                 curr_batch, pos = getNextBatch(X,pos,BATCH_SIZE)
@@ -216,8 +224,12 @@ def train():
             train_noise = np.random.normal(size=[BATCH_SIZE, random_dim]).astype(np.float32)
             _, gLoss = sess.run([trainer_g, g_loss], feed_dict={random_inp:train_noise})
 
-        # save the model
             total_batch += 1
+
+            #get the summary
+            summary = sess.run([write_op] ,feed_dict={random_inp:train_noise,real_image:curr_batch})[0]
+            writer.add_summary(summary,total_batch)
+        # save the model
         if epoch%5==0:
             select = np.random.randint(0,X.shape[0],BATCH_SIZE)
             curr_batch = X[select]
@@ -229,18 +241,20 @@ def train():
             # save some images
             if epoch%100 == 0:
                 os.makedirs('generated/'+str(epoch)+'/')
+                os.makedirs("scipy/generated/"+str(epoch)+'/')
+
                 gen_images = sess.run(sample_img,feed_dict={random_inp:generate_noise})
                 for g in range(len(gen_images)):
                     imwrite(gen_images[g],'generated/'+str(epoch)+"/"+str(g)+'.jpg')
                 train_noise = np.random.normal(size=[BATCH_SIZE, random_dim]).astype(np.float32)
                 gen_images = sess.run(sample_img,feed_dict={random_inp:train_noise})
                 os.makedirs('generated/'+str(epoch)+'/random/')
-                for g in range(len(gen_images)):
-                    imwrite(gen_images[g],'generated/'+str(epoch)+'/random/'+str(g)+'.jpg')
+                os.makedirs("scipy/generated/"+str(epoch)+'/random/')
 
-            #     cv2.imwrite('generated/'+str(epoch)+"/"+str(g)+'.png',img*255.0)
+                merged = merge_images(gen_images,(8,8))
+                imwrite(merged,'generated/'+str(epoch)+'/random/'+str(g)+'.jpg')
 
-        if(epoch%10==0):
+        if(epoch%200==0):
             saver.save(sess,'models/PokeGanModelV1/model', global_step=epoch, write_meta_graph=False)
             with open("control.txt",'r') as f:
                 control = f.read()
@@ -249,25 +263,8 @@ def train():
                    sys.stdout.flush()
                    break
 
-        # if(epoch%5==0):
-        #     os.makedirs('genrated/'+str(epochs))
-        #
-        #     gen_images = sess.run(fake_image)
-        #     save_images(gen_images, epochs)
-        #
-
 
 
     saver.save(sess,'models/PokeGanModelV1/model', global_step=EPOCHS)
-    # os.makedirs('genrated/'+str(EPOCHS))
-    # sample_noise = np.random.uniform(-1.0, 1.0, size=[batch_size, random_dim]).astype(np.float32)
-    # gen_images = sess.run(fake_image)
-    # save_images(gen_images, epochs)
-
-def test():
-    pass
-
-def save_images(genrated, epochs):
-    pass
 
 train()
