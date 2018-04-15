@@ -33,6 +33,7 @@ def rotate_all_images():
     for each in os.listdir(FLIPPED):
         img = Image.open(FLIPPED + '/' + each, 'r')
         img.load()
+        img.save(ROTATED+'/'+each)
         rotate3deg = rotate_image(img, 8)
         rotate3deg.save(ROTATED+'/rotated_degree8_'+each, 'JPEG', quality=100)
 
