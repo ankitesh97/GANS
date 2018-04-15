@@ -56,14 +56,14 @@ The images were then normalized and then the class was pickled, the code to the 
 #### MNIST
 First the model was trained and tested on MNIST dataset, just to see if the implementation was correct, below are the samples generated while training. The code for this can be found  [here](https://github.com/ankitesh97/Gans/PokemonGenerator/mnist_wgan_64x64.py).    
 
-![](assets/mnist.gif)  
+![](assets/mnist_training.gif)  
 
 <br>
 
 ##### Pokemon  
 The model's architecture was changed according to the input image dimension, below are the samples generated while training on the pokemon dataset.
 
-![](assets/pokemon.gif)  
+![](assets/pokemon_training.gif)  
 
 The loss curves of discriminator and generator were drawn on tensorboard, below are curves, on the x axis number of networks updates performed, and on the y axis loss value.  
 <br>
