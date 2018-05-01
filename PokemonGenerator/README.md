@@ -7,6 +7,7 @@ This project uses one variant of Generative Adversarial Network (GAN) known as W
 
 The credits for the Pokemon dataset goes to [kvpratama](https://github.com/kvpratama), the dataset can be viewed [here](https://github.com/kvpratama/gan/tree/master/pokemon/data/pokemon)
 
+Check out my [blog post](https://ankitesh97.github.io/blog/2018/04/21/pokemon-generation-using-wgans/) on this project
 ## Dependencies
 ```
 pickle
